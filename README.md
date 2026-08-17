@@ -21,8 +21,9 @@ Bi-directional sync between OneNote and Obsidian-compatible Markdown. Pull noteb
 - **Page hierarchy** — parent/child pages become nested folders with subpage links
 - **Duplicate page names** — auto-detected and disambiguated with a short ID suffix
 - **YAML frontmatter** — page title, OneNote page ID, section name
-- **Rename & delete detection** — renames clean up old files, deleted pages are removed
+- **Move, rename & delete detection** — relocated or renamed pages clean up old files; deleted pages are removed
 - **Section filtering** — export specific sections via CLI flag or config
+- **Page filtering** — export specific page titles or IDs via CLI flag or config
 - **Dry run** — `--dry-run` previews what would sync without writing files
 
 ### Push (Obsidian → OneNote)
@@ -58,6 +59,9 @@ dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export"
 # Sync a specific section
 dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export" -s "Daily Notes"
 
+# Sync a specific page
+dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export" -s "Daily Notes" -p "Handoff"
+
 # Force full re-export (cleans output folder first)
 dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export" --full
 
@@ -77,11 +81,11 @@ dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export" -v
 ### Sync Behaviour
 
 By default, the tool performs an **incremental sync**:
-1. First run: no manifest exists → full export + creates `.onenote-sync.json`
+1. First run: no manifest exists → exports the selected scope + creates `.onenote-sync.json`
 2. Subsequent runs: compares `lastModifiedTime` → only syncs changed pages
 3. Nothing changed? Exits instantly after one hierarchy call (~5 seconds)
 
-New pages are exported. Modified pages are re-exported. Deleted/renamed pages have their old files cleaned up. Use `--full` to force a clean re-export.
+New pages are exported. Modified, moved, or renamed pages are re-exported after their old files are cleaned up. Deleted pages are removed. Section and page filters only affect their selected scope; excluded manifest entries and files remain untouched. Use `--full` to force a clean re-export of the selected scope.
 
 ## CLI Reference
 
@@ -103,6 +107,7 @@ Required (push):
 
 Options:
   -s, --section <name>     Filter sections for sync (repeatable)
+  -p, --page <name-or-id>  Filter pages for sync (repeatable)
       --full               Force full export (skip incremental sync)
       --dry-run            Preview sync plan without writing files
   -c, --config <path>      Path to a JSON config file (default: appsettings.json)
@@ -118,6 +123,7 @@ Default settings can be overridden in `appsettings.json` or via `--config`:
 {
   "ExportOptions": {
     "SectionFilter": [],
+    "PageFilter": [],
     "IncludeFrontmatter": true,
     "UseObsidianWikilinks": true,
     "EmbedImages": true,
@@ -141,7 +147,8 @@ OneNoteUtils.slnx
 │   ├── OneNoteUtils.Writers.Obsidian/  — Obsidian Markdown writer
 │   └── OneNoteUtils.Cli/              — Entry point, config, DI wiring
 └── tests/
-    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (93 tests)
+    ├── OneNoteUtils.Cli.Tests/         — CLI orchestration integration tests (4 tests)
+    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (97 tests)
     └── OneNoteUtils.Writers.Obsidian.Tests/ — Writer output tests (21 tests)
 ```
 
@@ -152,6 +159,7 @@ OneNoteUtils.slnx
 Incremental sync uses a `.onenote-sync.json` manifest to track state between runs (see [ADR-0004](docs/adr/0004-incremental-sync-via-json-manifest.md)). Push tracking also uses the manifest (see [ADR-0005](docs/adr/0005-explicit-push-command-for-markdown-to-onenote.md)).
 
 See [CONTEXT.md](CONTEXT.md) for the domain glossary and [docs/adr/](docs/adr/) for architectural decisions.
+Current and completed development work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Running Tests
 

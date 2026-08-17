@@ -6,6 +6,7 @@
     <Project Path="src/OneNoteUtils.Writers.Obsidian/OneNoteUtils.Writers.Obsidian.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OneNoteUtils.Cli.Tests/OneNoteUtils.Cli.Tests.csproj" />
     <Project Path="tests/OneNoteUtils.Core.Tests/OneNoteUtils.Core.Tests.csproj" />
     <Project Path="tests/OneNoteUtils.Writers.Obsidian.Tests/OneNoteUtils.Writers.Obsidian.Tests.csproj" />
   </Folder>

@@ -49,7 +49,7 @@ The end-to-end process of reading a **Notebook** from a **Source**, parsing it, 
 _Avoid_: conversion, migration
 
 **Sync**:
-An incremental **Export** that compares OneNote's `lastModifiedTime` against a **Sync Manifest** and only re-exports **Pages** that are new, modified, renamed, or deleted since the last run. OneNote is the source of truth; Obsidian is a read-only mirror. This is the "pull" direction.
+An incremental **Export** that compares OneNote's hierarchy and `lastModifiedTime` against a **Sync Manifest** and only re-exports **Pages** that are new, modified, moved, renamed, or deleted since the last run. OneNote is the source of truth; Obsidian is a read-only mirror. This is the "pull" direction.
 _Avoid_: backup, replication
 
 **Push**:
@@ -59,6 +59,14 @@ _Avoid_: upload, import
 **Sync Manifest**:
 A JSON file (`.onenote-sync.json`) stored in the output directory that records which **Pages** were last synced (pulled) and which Markdown files were last pushed. Used by **Sync** and **Push** to detect changes, match pages by ID, and clean up stale files.
 _Avoid_: state file, cache, database
+
+**Page Filter**:
+An optional sync/export scope that selects **Pages** by exact title or OneNote page ID. Multiple filters may be supplied. Pages outside the filter remain untouched in the **Sync Manifest** and on disk.
+_Avoid_: search, query
+
+**Section Filter**:
+An optional sync/export scope that selects **Sections** by exact name. Multiple filters may be supplied. Sections outside the filter remain untouched in the **Sync Manifest** and on disk.
+_Avoid_: folder filter, category filter
 
 ## Relationships
 
@@ -72,6 +80,8 @@ _Avoid_: state file, cache, database
 - A **Sync** reads the **Sync Manifest**, compares timestamps, and re-exports only changed **Pages** (pull direction)
 - A **Push** reads Markdown files, converts them to **Content Elements**, and writes them to OneNote via the **Source** (push direction)
 - A **Sync Manifest** belongs to one output directory and tracks both pulled **Pages** and pushed Markdown files
+- A **Page Filter** narrows an **Export** or **Sync** without treating excluded **Pages** as deleted
+- A **Section Filter** narrows an **Export** or **Sync** without treating excluded **Sections** as deleted
 
 ## Example dialogue
 

@@ -96,6 +96,36 @@ public class HierarchyParserTests
     }
 
     [Fact]
+    public void ParseNotebook_AppliesPageTitleFilter()
+    {
+        var options = new ExportOptions
+        {
+            PageFilter = ["sub page a"]
+        };
+
+        var notebook = HierarchyParser.ParseNotebook(_hierarchyXml, "Test Notebook", options);
+
+        notebook!.GetAllSections().SelectMany(item => item.Section.Pages)
+            .Should().ContainSingle(page => page.Title == "Sub Page A");
+    }
+
+    [Fact]
+    public void ParseNotebook_AppliesPageIdFilter()
+    {
+        var unfiltered = HierarchyParser.ParseNotebook(_hierarchyXml, "Test Notebook", new ExportOptions());
+        var target = unfiltered!.Sections[0].Pages[0];
+        var options = new ExportOptions
+        {
+            PageFilter = [target.PageId]
+        };
+
+        var notebook = HierarchyParser.ParseNotebook(_hierarchyXml, "Test Notebook", options);
+
+        notebook!.GetAllSections().SelectMany(item => item.Section.Pages)
+            .Should().ContainSingle(page => page.PageId == target.PageId);
+    }
+
+    [Fact]
     public void ParseNotebook_ReturnsNullForEmptyIdentifier()
     {
         var notebook = HierarchyParser.ParseNotebook(_hierarchyXml, "", new ExportOptions());

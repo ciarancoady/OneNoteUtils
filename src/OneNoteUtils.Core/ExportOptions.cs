@@ -21,6 +21,11 @@ public class ExportOptions
     public List<string> SectionFilter { get; set; } = [];
 
     /// <summary>
+    /// Optional page title or page ID filter. Empty means export all pages.
+    /// </summary>
+    public List<string> PageFilter { get; set; } = [];
+
+    /// <summary>
     /// Only export pages modified on or after this date. Null means no filter.
     /// </summary>
     public DateTime? DateThreshold { get; set; }

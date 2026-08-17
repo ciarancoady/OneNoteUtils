@@ -199,6 +199,56 @@ public class SyncDifferTests
         plan.ModifiedPages.Should().BeEmpty();
     }
 
+    [Fact]
+    public void Diff_PageMovedToAnotherSection_IsModified()
+    {
+        var manifest = new SyncManifest
+        {
+            Pages =
+            {
+                ["page-1"] = new SyncPageEntry
+                {
+                    Title = "Page",
+                    Section = "Old Section",
+                    LastModified = new DateTime(2026, 5, 20)
+                }
+            }
+        };
+        var notebook = CreateNotebook(
+            ("page-1", "Page", "New Section", new DateTime(2026, 5, 20)));
+
+        var plan = SyncDiffer.Diff(manifest, notebook);
+
+        plan.ModifiedPages.Should().ContainSingle();
+        plan.ModifiedPages[0].Section.Should().Be("New Section");
+        plan.ModifiedPages[0].PreviousEntry!.Section.Should().Be("Old Section");
+    }
+
+    [Fact]
+    public void Diff_FilteredSync_DoesNotDeletePagesOutsideFilter()
+    {
+        var manifest = new SyncManifest
+        {
+            Pages =
+            {
+                ["selected"] = new SyncPageEntry { Title = "Selected", Section = "Section A" },
+                ["outside-page"] = new SyncPageEntry { Title = "Other", Section = "Section A" },
+                ["outside-section"] = new SyncPageEntry { Title = "Selected", Section = "Section B" }
+            }
+        };
+        var notebook = CreateNotebook(("selected", "Selected", "Section A", null));
+        var options = new ExportOptions
+        {
+            SectionFilter = ["Section A"],
+            PageFilter = ["Selected"]
+        };
+
+        var plan = SyncDiffer.Diff(manifest, notebook, options);
+
+        plan.DeletedPages.Should().BeEmpty();
+        plan.UnchangedPages.Should().ContainSingle();
+    }
+
     // --- Helpers ---
 
     private static Notebook CreateNotebook(params (string id, string title, string section, DateTime? lastMod)[] pages)

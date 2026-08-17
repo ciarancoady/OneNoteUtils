@@ -134,15 +134,21 @@ public static class HierarchyParser
             var pageId = pageNode.GetAttribute("ID");
             if (string.IsNullOrEmpty(pageId)) continue;
 
+            var title = pageNode.GetAttribute("name");
+            if (string.IsNullOrWhiteSpace(title)) title = "Untitled";
+
+            if (options.PageFilter.Count > 0 &&
+                !options.PageFilter.Any(filter =>
+                    filter.Equals(title, StringComparison.OrdinalIgnoreCase) ||
+                    filter.Equals(pageId, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
             if (options.DateThreshold.HasValue)
             {
                 var lastModStr = pageNode.GetAttribute("lastModifiedTime");
                 if (DateTime.TryParse(lastModStr, out var lastMod) && lastMod < options.DateThreshold.Value)
                     continue;
             }
-
-            var title = pageNode.GetAttribute("name");
-            if (string.IsNullOrWhiteSpace(title)) title = "Untitled";
 
             var levelStr = pageNode.GetAttribute("pageLevel");
             var level = int.TryParse(levelStr, out var l) ? Math.Max(1, l) : 1;

@@ -41,7 +41,7 @@ public static class SyncDiffer
     /// <summary>
     /// Diffs the manifest against the current notebook to determine what needs syncing.
     /// </summary>
-    public static SyncPlan Diff(SyncManifest manifest, Notebook notebook)
+    public static SyncPlan Diff(SyncManifest manifest, Notebook notebook, ExportOptions? options = null)
     {
         var plan = new SyncPlan();
 
@@ -65,7 +65,7 @@ public static class SyncDiffer
                         LastModified = page.LastModified
                     });
                 }
-                else if (IsModified(page, entry))
+                else if (IsModified(page, sectionFullName, entry))
                 {
                     plan.ModifiedPages.Add(new SyncPageAction
                     {
@@ -93,7 +93,7 @@ public static class SyncDiffer
         // Detect deletions — pages in manifest but not in current hierarchy
         foreach (var (pageId, entry) in manifest.Pages)
         {
-            if (!currentPageIds.Contains(pageId))
+            if (!currentPageIds.Contains(pageId) && IsInScope(pageId, entry, options))
             {
                 plan.DeletedPages.Add(new SyncPageAction
                 {
@@ -108,10 +108,14 @@ public static class SyncDiffer
         return plan;
     }
 
-    private static bool IsModified(Page page, SyncPageEntry entry)
+    private static bool IsModified(Page page, string section, SyncPageEntry entry)
     {
         // Title changed (rename)
         if (page.Title != entry.Title)
+            return true;
+
+        // Page moved to another section or section group
+        if (!section.Equals(entry.Section, StringComparison.OrdinalIgnoreCase))
             return true;
 
         // Timestamp newer than what we last synced
@@ -124,5 +128,28 @@ public static class SyncDiffer
             return true;
 
         return false;
+    }
+
+    private static bool IsInScope(string pageId, SyncPageEntry entry, ExportOptions? options)
+    {
+        if (options == null)
+            return true;
+
+        if (options.SectionFilter.Count > 0)
+        {
+            var leafSection = entry.Section.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? entry.Section;
+            if (!options.SectionFilter.Any(filter =>
+                    filter.Equals(entry.Section, StringComparison.OrdinalIgnoreCase) ||
+                    filter.Equals(leafSection, StringComparison.OrdinalIgnoreCase)))
+                return false;
+        }
+
+        if (options.PageFilter.Count > 0 &&
+            !options.PageFilter.Any(filter =>
+                filter.Equals(entry.Title, StringComparison.OrdinalIgnoreCase) ||
+                filter.Equals(pageId, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        return true;
     }
 }
