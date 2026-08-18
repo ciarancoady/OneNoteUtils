@@ -94,6 +94,32 @@ public sealed class OneNoteApplicationTests : IDisposable
     }
 
     [Fact]
+    public void RunPush_InvalidReplacement_DoesNotClearExistingPage()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Handoff.md");
+        File.WriteAllText(markdownPath, "![[missing.png]]");
+        new SyncManifest
+        {
+            Pushed =
+            {
+                [Path.GetFullPath(markdownPath)] = new PushEntry
+                {
+                    PageId = "page-1",
+                    NotebookName = "Notebook",
+                    SectionName = "Shared"
+                }
+            }
+        }.Save(_tempDirectory);
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent("outline-1"));
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(markdownPath, "Notebook", "Shared", _tempDirectory).Should().Be(1);
+
+        source.DeletedObjects.Should().BeEmpty();
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
     public void CliArguments_PageOption_IsRepeatable()
     {
         var arguments = CliArguments.Parse(

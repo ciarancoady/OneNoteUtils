@@ -137,7 +137,8 @@ public static class OneNoteXmlWriter
     private static void WriteImage(StringBuilder sb, Image image)
     {
         var bytes = image.LoadBytes();
-        if (bytes == null) return;
+        if (bytes == null)
+            throw new FileNotFoundException($"Image '{image.FileName}' could not be resolved.");
 
         var base64 = Convert.ToBase64String(bytes);
         var format = image.Format.ToLowerInvariant();
@@ -145,34 +146,109 @@ public static class OneNoteXmlWriter
 
         sb.Append("<one:OE>");
         sb.Append($"<one:Image format=\"{format}\">");
+        if (TryGetImageDimensions(bytes, out var width, out var height))
+            sb.Append($"<one:Size width=\"{width}\" height=\"{height}\"/>");
         sb.Append($"<one:Data>{base64}</one:Data>");
         sb.Append("</one:Image>");
         sb.Append("</one:OE>");
     }
 
+    private static bool TryGetImageDimensions(byte[] bytes, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+
+        if (bytes.Length >= 24 &&
+            bytes[0] == 0x89 &&
+            bytes[1] == 0x50 &&
+            bytes[2] == 0x4E &&
+            bytes[3] == 0x47)
+        {
+            width = ReadBigEndianInt32(bytes, 16);
+            height = ReadBigEndianInt32(bytes, 20);
+            return width > 0 && height > 0;
+        }
+
+        if (bytes.Length >= 10 &&
+            bytes[0] == 0x47 &&
+            bytes[1] == 0x49 &&
+            bytes[2] == 0x46)
+        {
+            width = bytes[6] | bytes[7] << 8;
+            height = bytes[8] | bytes[9] << 8;
+            return width > 0 && height > 0;
+        }
+
+        if (bytes.Length >= 26 && bytes[0] == 0x42 && bytes[1] == 0x4D)
+        {
+            width = BitConverter.ToInt32(bytes, 18);
+            height = Math.Abs(BitConverter.ToInt32(bytes, 22));
+            return width > 0 && height > 0;
+        }
+
+        return TryGetJpegDimensions(bytes, out width, out height);
+    }
+
+    private static bool TryGetJpegDimensions(byte[] bytes, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8)
+            return false;
+
+        var offset = 2;
+        while (offset + 8 < bytes.Length)
+        {
+            if (bytes[offset] != 0xFF)
+            {
+                offset++;
+                continue;
+            }
+
+            var marker = bytes[offset + 1];
+            if (marker is >= 0xC0 and <= 0xC3)
+            {
+                height = bytes[offset + 5] << 8 | bytes[offset + 6];
+                width = bytes[offset + 7] << 8 | bytes[offset + 8];
+                return width > 0 && height > 0;
+            }
+
+            if (offset + 3 >= bytes.Length)
+                return false;
+
+            var segmentLength = bytes[offset + 2] << 8 | bytes[offset + 3];
+            if (segmentLength < 2)
+                return false;
+
+            offset += segmentLength + 2;
+        }
+
+        return false;
+    }
+
+    private static int ReadBigEndianInt32(byte[] bytes, int offset) =>
+        bytes[offset] << 24 |
+        bytes[offset + 1] << 16 |
+        bytes[offset + 2] << 8 |
+        bytes[offset + 3];
+
     private static void WriteCodeBlock(StringBuilder sb, CodeBlock codeBlock)
     {
-        // Wrap code in a single-column table to create a bordered box
         var codeLines = codeBlock.Code.Split('\n');
 
         sb.Append("<one:OE>");
-        sb.Append("<one:Table bordersVisible=\"true\">");
-        sb.Append("<one:Columns><one:Column index=\"0\" width=\"600\"/></one:Columns>");
-        sb.Append("<one:Row><one:Cell>");
         sb.Append("<one:OEChildren>");
 
         foreach (var line in codeLines)
         {
             sb.Append("<one:OE>");
-            sb.Append("<one:T><![CDATA[<span style=\"font-family:Consolas,monospace;font-size:10pt\">");
+            sb.Append("<one:T><![CDATA[<span style=\"font-family:Consolas,monospace;font-size:10pt;background-color:#f0f0f0\">");
             sb.Append(HtmlEncode(string.IsNullOrEmpty(line) ? " " : line));
             sb.Append("</span>]]></one:T>");
             sb.Append("</one:OE>");
         }
 
         sb.Append("</one:OEChildren>");
-        sb.Append("</one:Cell></one:Row>");
-        sb.Append("</one:Table>");
         sb.Append("</one:OE>");
     }
 

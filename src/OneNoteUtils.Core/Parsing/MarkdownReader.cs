@@ -91,14 +91,14 @@ public static class MarkdownReader
             var mdImageMatch = Regex.Match(line.Trim(), @"^!\[([^\]]*)\]\(([^)]+)\)$");
             if (wikiImageMatch.Success)
             {
-                var imagePath = wikiImageMatch.Groups[1].Value;
+                var imagePath = ExtractWikiLinkTarget(wikiImageMatch.Groups[1].Value);
                 elements.Add(CreateImageFromPath(imagePath, basePath));
                 i++;
                 continue;
             }
             if (mdImageMatch.Success)
             {
-                var imagePath = mdImageMatch.Groups[2].Value;
+                var imagePath = ExtractMarkdownImageTarget(mdImageMatch.Groups[2].Value);
                 elements.Add(CreateImageFromPath(imagePath, basePath));
                 i++;
                 continue;
@@ -383,24 +383,57 @@ public static class MarkdownReader
 
     private static Image CreateImageFromPath(string imagePath, string? basePath)
     {
+        imagePath = Uri.UnescapeDataString(imagePath);
         var format = Path.GetExtension(imagePath).TrimStart('.').ToLowerInvariant();
         if (string.IsNullOrEmpty(format)) format = "png";
 
         var fileName = Path.GetFileName(imagePath);
+        var resolvedPath = ResolveImagePath(imagePath, basePath);
 
         return new Image(
             fileName,
             format,
-            () =>
-            {
-                // Try to resolve and load the image file
-                if (basePath == null) return null;
+            () => resolvedPath != null ? File.ReadAllBytes(resolvedPath) : null);
+    }
 
-                var fullPath = Path.IsPathRooted(imagePath)
-                    ? imagePath
-                    : Path.Combine(basePath, imagePath);
+    private static string? ResolveImagePath(string imagePath, string? basePath)
+    {
+        if (Path.IsPathRooted(imagePath))
+            return File.Exists(imagePath) ? imagePath : null;
 
-                return File.Exists(fullPath) ? File.ReadAllBytes(fullPath) : null;
-            });
+        if (basePath == null || !Directory.Exists(basePath))
+            return null;
+
+        var directCandidates = new[]
+        {
+            Path.Combine(basePath, imagePath),
+            Path.Combine(basePath, "images", imagePath),
+            Path.Combine(basePath, "_attachments", imagePath)
+        };
+        var directMatch = directCandidates.FirstOrDefault(File.Exists);
+        if (directMatch != null)
+            return directMatch;
+
+        var fileName = Path.GetFileName(imagePath);
+        var recursiveMatches = Directory.EnumerateFiles(basePath, fileName, SearchOption.AllDirectories)
+            .Take(2)
+            .ToList();
+        return recursiveMatches.Count == 1 ? recursiveMatches[0] : null;
+    }
+
+    private static string ExtractWikiLinkTarget(string target)
+    {
+        var aliasSeparator = target.IndexOf('|');
+        return (aliasSeparator >= 0 ? target[..aliasSeparator] : target).Trim();
+    }
+
+    private static string ExtractMarkdownImageTarget(string target)
+    {
+        target = target.Trim();
+        if (target.StartsWith('<') && target.EndsWith('>'))
+            return target[1..^1];
+
+        var titleSeparator = Regex.Match(target, """\s+["'(]""");
+        return titleSeparator.Success ? target[..titleSeparator.Index] : target;
     }
 }

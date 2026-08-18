@@ -236,12 +236,12 @@ public sealed class OneNoteApplication(
                 {
                     var markdown = File.ReadAllText(markdownFile);
                     var elements = MarkdownReader.Parse(markdown, Path.GetDirectoryName(markdownFile));
+                    ValidateImages(elements);
 
                     string pageId;
                     if (manifest.Pushed.TryGetValue(markdownFile, out var existing))
                     {
                         pageId = existing.PageId;
-                        ClearPageOutlines(pageId);
                     }
                     else
                     {
@@ -249,7 +249,10 @@ public sealed class OneNoteApplication(
                     }
 
                     var title = MarkdownReader.ExtractTitle(markdown) ?? Path.GetFileNameWithoutExtension(markdownFile);
-                    source.UpdatePageContent(OneNoteXmlWriter.BuildPageXml(pageId, title, elements));
+                    var pageXml = OneNoteXmlWriter.BuildPageXml(pageId, title, elements);
+                    if (manifest.Pushed.ContainsKey(markdownFile))
+                        ClearPageOutlines(pageId);
+                    source.UpdatePageContent(pageXml);
 
                     manifest.Pushed[markdownFile] = new PushEntry
                     {
@@ -393,6 +396,40 @@ public sealed class OneNoteApplication(
             var objectId = outline.GetAttribute("objectID");
             if (!string.IsNullOrEmpty(objectId))
                 source.DeletePageContent(pageId, objectId);
+        }
+    }
+
+    private static void ValidateImages(IEnumerable<ContentElement> elements)
+    {
+        foreach (var element in elements)
+        {
+            switch (element)
+            {
+                case Image image when image.LoadBytes() == null:
+                    throw new FileNotFoundException($"Image '{image.FileName}' could not be resolved.");
+                case BulletList bulletList:
+                    foreach (var item in bulletList.Items)
+                    {
+                        ValidateImages(item.Elements);
+                        if (item.Children != null)
+                            ValidateImages(item.Children);
+                    }
+                    break;
+                case NumberedList numberedList:
+                    foreach (var item in numberedList.Items)
+                    {
+                        ValidateImages(item.Elements);
+                        if (item.Children != null)
+                            ValidateImages(item.Children);
+                    }
+                    break;
+                case Table table:
+                    ValidateImages(table.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Elements));
+                    break;
+                case Blockquote blockquote:
+                    ValidateImages(blockquote.Elements);
+                    break;
+            }
         }
     }
 

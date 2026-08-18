@@ -1,6 +1,7 @@
 using FluentAssertions;
 using OneNoteUtils.Core.Models;
 using OneNoteUtils.Core.Parsing;
+using System.Text.RegularExpressions;
 
 namespace OneNoteUtils.Core.Tests.Parsing;
 
@@ -135,15 +136,77 @@ public class OneNoteXmlWriterTests
     }
 
     [Fact]
+    public void BuildPageXml_PngImage_IncludesDisplayDimensions()
+    {
+        var bytes = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAYAAABWKLW/AAAAAXNSR0IArs4c6QAAAA1JREFUGFdjYGBg+A8AAQQBAH72mAAAAABJRU5ErkJggg==");
+
+        var xml = OneNoteXmlWriter.BuildPageXml(
+            "p1",
+            "T",
+            [new Image("test.png", "png", () => bytes)]);
+
+        xml.Should().Contain("<one:Size width=\"2\" height=\"3\"/>");
+    }
+
+    [Fact]
+    public void BuildPageXml_ContentAfterImage_IsPreserved()
+    {
+        var xml = OneNoteXmlWriter.BuildPageXml("p1", "T", [
+            new Paragraph([new Run("before")]),
+            new Image("test.png", "png", () => [1, 2, 3]),
+            new Paragraph([new Run("after")])
+        ]);
+
+        xml.Should().Contain("before");
+        xml.Should().Contain("one:Image");
+        xml.Should().Contain("after");
+        xml.IndexOf("after", StringComparison.Ordinal)
+            .Should().BeGreaterThan(xml.IndexOf("one:Image", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildPageXml_MissingImage_ThrowsInsteadOfSilentlyDroppingIt()
+    {
+        var act = () => OneNoteXmlWriter.BuildPageXml(
+            "p1",
+            "T",
+            [new Image("missing.png", "png", () => null)]);
+
+        act.Should().Throw<FileNotFoundException>()
+            .WithMessage("*missing.png*");
+    }
+
+    [Fact]
     public void BuildPageXml_CodeBlock()
     {
         var xml = OneNoteXmlWriter.BuildPageXml("p1", "T",
             [new CodeBlock("let x = 1;\nlet y = 2;")]);
 
-        xml.Should().Contain("one:Table"); // code blocks are in bordered boxes
+        xml.Should().NotContain("one:Table");
         xml.Should().Contain("Consolas");
+        xml.Should().Contain("background-color:#f0f0f0");
         xml.Should().Contain("let x = 1;");
         xml.Should().Contain("let y = 2;");
+    }
+
+    [Fact]
+    public void BuildPageXml_CodeBlocksAndMarkdownTable_OnlyEmitsRealTable()
+    {
+        var xml = OneNoteXmlWriter.BuildPageXml("p1", "T", [
+            new CodeBlock("first"),
+            new Table([
+                new TableRow([
+                    new TableCell([new Paragraph([new Run("cell")])])
+                ])
+            ]),
+            new CodeBlock("second")
+        ]);
+
+        Regex.Matches(xml, "<one:Table").Should().ContainSingle();
+        xml.Should().Contain("first");
+        xml.Should().Contain("cell");
+        xml.Should().Contain("second");
     }
 
     [Fact]

@@ -237,6 +237,71 @@ public class MarkdownReaderTests
     }
 
     [Fact]
+    public void Parse_Image_WikiLinkWithAlias_ResolvesUnderlyingFile()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"MarkdownReader_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        try
+        {
+            var imagePath = Path.Combine(tempDirectory, "Pasted image.png");
+            File.WriteAllBytes(imagePath, [1, 2, 3]);
+
+            var elements = MarkdownReader.Parse(
+                "![[Pasted image.png|Screenshot]]",
+                tempDirectory);
+
+            var image = elements.Should().ContainSingle().Which.Should().BeOfType<Image>().Subject;
+            image.FileName.Should().Be("Pasted image.png");
+            image.LoadBytes().Should().Equal(1, 2, 3);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Parse_Image_ResolvesUniqueFileInAttachmentSubfolder()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"MarkdownReader_{Guid.NewGuid():N}");
+        var imageDirectory = Path.Combine(tempDirectory, "images");
+        Directory.CreateDirectory(imageDirectory);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(imageDirectory, "chart.png"), [4, 5, 6]);
+
+            var elements = MarkdownReader.Parse("![[chart.png]]", tempDirectory);
+
+            var image = elements.Should().ContainSingle().Which.Should().BeOfType<Image>().Subject;
+            image.LoadBytes().Should().Equal(4, 5, 6);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Parse_ContentAfterImage_IsPreserved()
+    {
+        var markdown = """
+            here's a good old pic
+            ![[Pasted image.png]]
+
+            and then I had this other one as well like this
+            """;
+
+        var elements = MarkdownReader.Parse(markdown);
+
+        elements.Should().HaveCount(3);
+        elements[0].Should().BeOfType<Paragraph>();
+        elements[1].Should().BeOfType<Image>();
+        elements[2].Should().BeOfType<Paragraph>()
+            .Which.Runs.Should().ContainSingle()
+            .Which.Text.Should().Contain("this other one");
+    }
+
+    [Fact]
     public void Parse_MixedContent()
     {
         var md = "# Title\n\nA paragraph.\n\n- Bullet\n\n---\n\n> Quote";

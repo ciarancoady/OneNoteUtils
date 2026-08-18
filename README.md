@@ -32,8 +32,9 @@ Bi-directional sync between OneNote and Obsidian-compatible Markdown. Pull noteb
 - **Create or update** — new files create pages, re-pushing updates the same page
 - **Full formatting** — headings, bold/italic/strikethrough/underline/links, inline code
 - **Lists & tables** — bullet, numbered, nested lists and tables
-- **Images** — base64-encoded and embedded in OneNote
-- **Code blocks** — rendered in Consolas inside bordered boxes
+- **Images** — resolves vault attachments beside the Markdown file or in nested `images`/`_attachments` folders, then embeds them in OneNote
+- **Safe replacement** — unresolved images fail before an existing OneNote page is cleared
+- **Code blocks** — rendered as shaded Consolas paragraphs without unsafe synthetic tables
 - **Blockquotes** — rendered as italic with vertical bar prefix
 - **Page title from h1** — uses the first heading as the OneNote page title
 
@@ -147,8 +148,8 @@ OneNoteUtils.slnx
 │   ├── OneNoteUtils.Writers.Obsidian/  — Obsidian Markdown writer
 │   └── OneNoteUtils.Cli/              — Entry point, config, DI wiring
 └── tests/
-    ├── OneNoteUtils.Cli.Tests/         — CLI orchestration integration tests (4 tests)
-    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (97 tests)
+    ├── OneNoteUtils.Cli.Tests/         — CLI orchestration integration tests (5 tests)
+    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (104 tests)
     └── OneNoteUtils.Writers.Obsidian.Tests/ — Writer output tests (21 tests)
 ```
 
