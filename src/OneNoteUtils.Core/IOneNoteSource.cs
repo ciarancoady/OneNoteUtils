@@ -22,6 +22,11 @@ public interface IOneNoteSource
     string CreatePage(string sectionId);
 
     /// <summary>
+    /// Permanently deletes a page by ID.
+    /// </summary>
+    void DeletePage(string pageId);
+
+    /// <summary>
     /// Updates the content of an existing page using OneNote XML.
     /// </summary>
     void UpdatePageContent(string pageXml);

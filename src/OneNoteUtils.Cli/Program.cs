@@ -61,7 +61,12 @@ using var provider = services.BuildServiceProvider();
 var application = provider.GetRequiredService<OneNoteApplication>();
 
 if (!string.IsNullOrEmpty(parsed.PushPath))
-    return application.RunPush(parsed.PushPath, parsed.Notebook!, parsed.Sections[0], parsed.Output ?? ".");
+    return application.RunPush(
+        parsed.PushPath,
+        parsed.Notebook!,
+        parsed.Sections[0],
+        parsed.Output ?? ".",
+        new PushOptions(parsed.DryRun, parsed.UpdateExisting, parsed.TargetPageId));
 if (parsed.FullExport)
     return application.RunFullExport(parsed.Notebook!, parsed.Output!, options);
 return application.RunSync(parsed.Notebook!, parsed.Output!, options, parsed.DryRun);
@@ -76,6 +81,8 @@ public sealed record CliArguments(
     bool FullExport,
     string? PushPath,
     bool DryRun,
+    bool UpdateExisting,
+    string? TargetPageId,
     bool Help)
 {
     public static CliArguments Parse(string[] args)
@@ -84,9 +91,11 @@ public sealed record CliArguments(
         string? output = null;
         string? config = null;
         string? pushPath = null;
+        string? targetPageId = null;
         var verbose = false;
         var fullExport = false;
         var dryRun = false;
+        var updateExisting = false;
         var help = false;
         var sections = new List<string>();
         var pages = new List<string>();
@@ -119,6 +128,12 @@ public sealed record CliArguments(
                 case "--dry-run":
                     dryRun = true;
                     break;
+                case "--update-existing":
+                    updateExisting = true;
+                    break;
+                case "--target-page-id":
+                    if (index + 1 < args.Length) targetPageId = args[++index];
+                    break;
                 case "--verbose" or "-v":
                     verbose = true;
                     break;
@@ -138,6 +153,8 @@ public sealed record CliArguments(
             fullExport,
             pushPath,
             dryRun,
+            updateExisting,
+            targetPageId,
             help);
     }
 
@@ -165,7 +182,9 @@ public sealed record CliArguments(
               -s, --section <name>     Filter sections for sync (repeatable)
               -p, --page <name-or-id>  Filter pages for sync (repeatable)
                   --full               Force full export (skip incremental sync)
-                  --dry-run            Preview sync plan without writing files
+                  --dry-run            Preview sync or Push Plan without writing
+                  --update-existing     Update one exact same-title Page during Push
+                  --target-page-id <id> Update an exact Page ID during single-file Push
               -c, --config <path>      Path to a JSON config file (default: appsettings.json)
               -v, --verbose            Enable debug logging
               -h, --help               Show this help message
@@ -177,6 +196,7 @@ public sealed record CliArguments(
               OneNoteUtils.Cli -n "My Notebook" -o C:\Export --full
               OneNoteUtils.Cli -n "My Notebook" -o C:\Export --dry-run
               OneNoteUtils.Cli --push "C:\Vault\Note.md" -n "Team Notebook" -s "Shared"
+              OneNoteUtils.Cli --push "C:\Vault\Note.md" -n "Team Notebook" -s "Shared" --dry-run
             """);
     }
 }

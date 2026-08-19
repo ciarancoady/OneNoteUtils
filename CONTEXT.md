@@ -17,7 +17,7 @@ A named grouping of pages inside a **Notebook** or **Section Group** (maps to a 
 _Avoid_: tab, category
 
 **Page**:
-A single OneNote page within a **Section**. Has a title, content, and a level indicating its depth in the parent–child hierarchy.
+A single OneNote page within a **Section**. Has a title, content, creation time, last-modified time, and a level indicating its depth in the parent–child hierarchy.
 _Avoid_: note, document, file
 
 **Page Level**:
@@ -31,6 +31,14 @@ _Avoid_: block, node, component
 **Run**:
 A span of inline text within a paragraph with uniform formatting (bold, italic, strikethrough, underline, code, highlight, hyperlink). A paragraph contains one or more **Runs**.
 _Avoid_: span, fragment, chunk
+
+**Image**:
+An image **Content Element** with binary content plus optional **Image Presentation** metadata.
+_Avoid_: picture, screenshot, graphic
+
+**Image Presentation**:
+Optional alt text and display dimensions associated with an **Image**. Display dimensions describe presentation size and may differ from the image's intrinsic pixel dimensions.
+_Avoid_: image style, image properties
 
 **Source**:
 The component that reads and writes raw data to/from OneNote (currently via COM Interop). Produces hierarchy and page XML for pulls; accepts page XML for pushes.
@@ -56,6 +64,14 @@ _Avoid_: backup, replication
 The reverse of **Sync** — takes one or more Markdown files from Obsidian and creates or updates **Pages** in a OneNote **Notebook** and **Section**. Used to share notes with a team that works in OneNote.
 _Avoid_: upload, import
 
+**Push Plan**:
+A complete preflight result for a **Push**. It validates every Markdown file, local image, hyperlink scheme, and target **Page** before mutation; classifies each action as create or update; and captures original page XML for rollback.
+_Avoid_: preview, batch, transaction
+
+**Append Push**:
+An explicit form of **Push** that adds ordered **Content Elements** to an existing **Page** without replacing its existing content. It targets one Page and uses either an explicit insertion point or the end of the Page.
+_Avoid_: merge, patch, incremental push
+
 **Sync Manifest**:
 A JSON file (`.onenote-sync.json`) stored in the output directory that records which **Pages** were last synced (pulled) and which Markdown files were last pushed. Used by **Sync** and **Push** to detect changes, match pages by ID, and clean up stale files.
 _Avoid_: state file, cache, database
@@ -76,9 +92,14 @@ _Avoid_: folder filter, category filter
 - A **Page** contains an ordered list of **Content Elements**
 - A **Content Element** may recursively contain other **Content Elements** (e.g. a table cell or list item containing images and formatted text)
 - A paragraph **Content Element** contains one or more **Runs**
+- An **Image** preserves its binary content independently from its optional presentation metadata
+- **Image Presentation** may be absent even when an **Image** has intrinsic dimensions
 - **Page Level** determines the parent–child tree of **Pages** within a **Section**
 - A **Sync** reads the **Sync Manifest**, compares timestamps, and re-exports only changed **Pages** (pull direction)
 - A **Push** reads Markdown files, converts them to **Content Elements**, and writes them to OneNote via the **Source** (push direction)
+- A **Push** executes only after its **Push Plan** validates the complete input scope
+- A **Push Plan** maps each Markdown file to exactly one create or update action
+- An **Append Push** targets exactly one existing **Page** and preserves its existing **Content Elements**
 - A **Sync Manifest** belongs to one output directory and tracks both pulled **Pages** and pushed Markdown files
 - A **Page Filter** narrows an **Export** or **Sync** without treating excluded **Pages** as deleted
 - A **Section Filter** narrows an **Export** or **Sync** without treating excluded **Sections** as deleted

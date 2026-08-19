@@ -62,7 +62,8 @@ public record TableCell(IReadOnlyList<ContentElement> Elements);
 public record Image(
     string FileName,
     string Format,
-    Func<byte[]?> LoadBytes) : ContentElement;
+    Func<byte[]?> LoadBytes,
+    string? Source = null) : ContentElement;
 
 /// <summary>
 /// A file attachment with lazy-loaded binary data.

@@ -80,6 +80,20 @@ public class HierarchyParserTests
     }
 
     [Fact]
+    public void ParseNotebook_AppliesSectionFilterCaseInsensitively()
+    {
+        var options = new ExportOptions
+        {
+            SectionFilter = ["getting started"]
+        };
+
+        var notebook = HierarchyParser.ParseNotebook(_hierarchyXml, "Test Notebook", options);
+
+        notebook!.Sections.Should().ContainSingle()
+            .Which.Name.Should().Be("Getting Started");
+    }
+
+    [Fact]
     public void ParseNotebook_AppliesDateFilter()
     {
         var options = new ExportOptions

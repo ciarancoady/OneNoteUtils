@@ -393,7 +393,8 @@ public static class MarkdownReader
         return new Image(
             fileName,
             format,
-            () => resolvedPath != null ? File.ReadAllBytes(resolvedPath) : null);
+            () => resolvedPath != null ? File.ReadAllBytes(resolvedPath) : null,
+            imagePath);
     }
 
     private static string? ResolveImagePath(string imagePath, string? basePath)

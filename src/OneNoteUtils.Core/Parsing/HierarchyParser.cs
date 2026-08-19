@@ -88,7 +88,8 @@ public static class HierarchyParser
             if (child.LocalName != "Section") continue;
             var sectionName = (child as XmlElement)?.GetAttribute("name") ?? "Untitled";
 
-            if (hasSectionFilter && !options.SectionFilter.Contains(sectionName))
+            if (hasSectionFilter && !options.SectionFilter.Any(filter =>
+                    filter.Equals(sectionName, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
             var pages = ParsePages((XmlElement)child, options);

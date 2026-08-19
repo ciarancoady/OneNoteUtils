@@ -34,6 +34,9 @@ Bi-directional sync between OneNote and Obsidian-compatible Markdown. Pull noteb
 - **Lists & tables** — bullet, numbered, nested lists and tables
 - **Images** — resolves vault attachments beside the Markdown file or in nested `images`/`_attachments` folders, then embeds them in OneNote
 - **Safe replacement** — unresolved images fail before an existing OneNote page is cleared
+- **Push preflight** — validates the complete batch, local assets, link schemes, duplicate titles, and target membership before changing OneNote
+- **Rollback** — failed updates attempt to restore the original OneNote page XML
+- **Explicit targeting** — safely update an exact same-title page or Page ID
 - **Code blocks** — rendered as shaded Consolas paragraphs without unsafe synthetic tables
 - **Blockquotes** — rendered as italic with vertical bar prefix
 - **Page title from h1** — uses the first heading as the OneNote page title
@@ -75,6 +78,15 @@ dotnet run --project src/OneNoteUtils.Cli -- --push "Note.md" -n "Team Notebook"
 # Push all .md files in a folder
 dotnet run --project src/OneNoteUtils.Cli -- --push "C:\Vault\Notes\" -n "Team Notebook" -s "Shared"
 
+# Preview a Push Plan without changing OneNote
+dotnet run --project src/OneNoteUtils.Cli -- --push "Note.md" -n "Team Notebook" -s "Shared" --dry-run
+
+# Update the single existing Page with the same normalized title
+dotnet run --project src/OneNoteUtils.Cli -- --push "Note.md" -n "Team Notebook" -s "Shared" --update-existing
+
+# Update one exact Page ID
+dotnet run --project src/OneNoteUtils.Cli -- --push "Note.md" -n "Team Notebook" -s "Shared" --target-page-id "{...}"
+
 # Verbose logging
 dotnet run --project src/OneNoteUtils.Cli -- -n "My Notebook" -o "C:\Export" -v
 ```
@@ -110,7 +122,9 @@ Options:
   -s, --section <name>     Filter sections for sync (repeatable)
   -p, --page <name-or-id>  Filter pages for sync (repeatable)
       --full               Force full export (skip incremental sync)
-      --dry-run            Preview sync plan without writing files
+      --dry-run            Preview sync or Push Plan without writing
+      --update-existing     Update one exact same-title Page during Push
+      --target-page-id <id> Update an exact Page ID during single-file Push
   -c, --config <path>      Path to a JSON config file (default: appsettings.json)
   -v, --verbose            Enable debug logging
   -h, --help               Show this help message
@@ -148,14 +162,16 @@ OneNoteUtils.slnx
 │   ├── OneNoteUtils.Writers.Obsidian/  — Obsidian Markdown writer
 │   └── OneNoteUtils.Cli/              — Entry point, config, DI wiring
 └── tests/
-    ├── OneNoteUtils.Cli.Tests/         — CLI orchestration integration tests (5 tests)
-    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (104 tests)
+    ├── OneNoteUtils.Cli.Tests/         — CLI orchestration integration tests (15 tests)
+    ├── OneNoteUtils.Core.Tests/        — Parser, sync, and utility tests (105 tests)
     └── OneNoteUtils.Writers.Obsidian.Tests/ — Writer output tests (21 tests)
 ```
 
 **Pull pipeline:** OneNote COM → raw XML → domain model (Notebook → Section → Page → ContentElement tree) → Markdown files on disk.
 
 **Push pipeline:** Markdown files → MarkdownReader → ContentElement tree → OneNoteXmlWriter → OneNote COM `UpdatePageContent`.
+
+Push first builds a **Push Plan** for the complete file or folder scope. Remote images and unsupported hyperlink schemes are rejected. Untracked same-title Pages require `--update-existing` or `--target-page-id`; `--dry-run` prints the plan without mutation. If an update fails after clearing existing content, the original page XML is restored where possible.
 
 Incremental sync uses a `.onenote-sync.json` manifest to track state between runs (see [ADR-0004](docs/adr/0004-incremental-sync-via-json-manifest.md)). Push tracking also uses the manifest (see [ADR-0005](docs/adr/0005-explicit-push-command-for-markdown-to-onenote.md)).
 

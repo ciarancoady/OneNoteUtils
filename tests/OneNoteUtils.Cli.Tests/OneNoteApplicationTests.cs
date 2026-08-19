@@ -120,12 +120,187 @@ public sealed class OneNoteApplicationTests : IDisposable
     }
 
     [Fact]
+    public void RunPush_SameTitleWithoutOverride_FailsBeforeMutation()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Page.md");
+        File.WriteAllText(markdownPath, "# Page\n\nReplacement.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent("outline-1"));
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(markdownPath, "Notebook", "Shared", _tempDirectory).Should().Be(1);
+
+        source.CreatePageCalls.Should().Be(0);
+        source.DeletedObjects.Should().BeEmpty();
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_UpdateExisting_UpdatesSingleExactTitleMatch()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Page.md");
+        File.WriteAllText(markdownPath, "# page\n\nReplacement.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent("outline-1"));
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(
+            markdownPath,
+            "Notebook",
+            "Shared",
+            _tempDirectory,
+            new PushOptions(UpdateExisting: true)).Should().Be(0);
+
+        source.CreatePageCalls.Should().Be(0);
+        source.DeletedObjects.Should().ContainSingle();
+        source.UpdatedPages.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void RunPush_DryRun_ReportsPlanWithoutMutation()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "New.md");
+        File.WriteAllText(markdownPath, "# New\n\nContent.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent());
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(
+            markdownPath,
+            "Notebook",
+            "Shared",
+            _tempDirectory,
+            new PushOptions(DryRun: true)).Should().Be(0);
+
+        source.CreatePageCalls.Should().Be(0);
+        source.UpdatedPages.Should().BeEmpty();
+        SyncManifest.Load(_tempDirectory).Pushed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_InvalidFileInFolder_FailsWholeBatchBeforeMutation()
+    {
+        File.WriteAllText(Path.Combine(_tempDirectory, "Good.md"), "# Good\n\nContent.");
+        File.WriteAllText(
+            Path.Combine(_tempDirectory, "Bad.md"),
+            "# Bad\n\n![remote](https://example.com/tracker.png)");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent());
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(_tempDirectory, "Notebook", "Shared", _tempDirectory).Should().Be(1);
+
+        source.CreatePageCalls.Should().Be(0);
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_UpdateFailure_RestoresOriginalPage()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Page.md");
+        File.WriteAllText(markdownPath, "# Page\n\nReplacement.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent("outline-1"))
+        {
+            UpdateFailuresRemaining = 1
+        };
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(
+            markdownPath,
+            "Notebook",
+            "Shared",
+            _tempDirectory,
+            new PushOptions(UpdateExisting: true)).Should().Be(1);
+
+        source.UpdateAttempts.Should().Be(2);
+        source.UpdatedPages.Should().ContainSingle()
+            .Which.Should().Contain("Content");
+    }
+
+    [Fact]
+    public void RunPush_CreateFailure_DeletesIncompletePage()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "New.md");
+        File.WriteAllText(markdownPath, "# New\n\nContent.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent())
+        {
+            UpdateFailuresRemaining = 1
+        };
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(markdownPath, "Notebook", "Shared", _tempDirectory).Should().Be(1);
+
+        source.DeletedPages.Should().ContainSingle().Which.Should().Be("page-1");
+        SyncManifest.Load(_tempDirectory).Pushed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_TargetPageIdMustBelongToSection()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Page.md");
+        File.WriteAllText(markdownPath, "# Page\n\nReplacement.");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent());
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(
+            markdownPath,
+            "Notebook",
+            "Shared",
+            _tempDirectory,
+            new PushOptions(TargetPageId: "other-page")).Should().Be(1);
+
+        source.DeletedObjects.Should().BeEmpty();
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_UnsupportedLinkScheme_FailsBeforeMutation()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Unsafe.md");
+        File.WriteAllText(markdownPath, "# Unsafe\n\n[click](javascript:alert)");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent());
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(markdownPath, "Notebook", "Shared", _tempDirectory).Should().Be(1);
+
+        source.CreatePageCalls.Should().Be(0);
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RunPush_ConflictingTargetOverrides_FailBeforeMutation()
+    {
+        var markdownPath = Path.Combine(_tempDirectory, "Page.md");
+        File.WriteAllText(markdownPath, "# Page");
+        var source = new FakeOneNoteSource(Hierarchy("Shared"), PageContent());
+        var application = CreateApplication(source, Options());
+
+        application.RunPush(
+            markdownPath,
+            "Notebook",
+            "Shared",
+            _tempDirectory,
+            new PushOptions(UpdateExisting: true, TargetPageId: "page-1")).Should().Be(1);
+
+        source.DeletedObjects.Should().BeEmpty();
+        source.UpdatedPages.Should().BeEmpty();
+    }
+
+    [Fact]
     public void CliArguments_PageOption_IsRepeatable()
     {
         var arguments = CliArguments.Parse(
             ["-n", "Notebook", "-o", "Export", "-p", "First", "--page", "page-2"]);
 
         arguments.Pages.Should().Equal("First", "page-2");
+    }
+
+    [Fact]
+    public void CliArguments_PushSafetyOptions_AreParsed()
+    {
+        var arguments = CliArguments.Parse(
+            ["--push", "Note.md", "-n", "Notebook", "-s", "Shared",
+             "--dry-run", "--update-existing", "--target-page-id", "page-2"]);
+
+        arguments.DryRun.Should().BeTrue();
+        arguments.UpdateExisting.Should().BeTrue();
+        arguments.TargetPageId.Should().Be("page-2");
     }
 
     private OneNoteApplication CreateApplication(FakeOneNoteSource source, ExportOptions options)
@@ -169,7 +344,10 @@ public sealed class OneNoteApplicationTests : IDisposable
     private sealed class FakeOneNoteSource(string hierarchyXml, string pageContentXml) : IOneNoteSource
     {
         public int CreatePageCalls { get; private set; }
+        public int UpdateAttempts { get; private set; }
+        public int UpdateFailuresRemaining { get; set; }
         public List<string> UpdatedPages { get; } = [];
+        public List<string> DeletedPages { get; } = [];
         public List<(string PageId, string ObjectId)> DeletedObjects { get; } = [];
 
         public string GetHierarchyXml() => hierarchyXml;
@@ -182,7 +360,19 @@ public sealed class OneNoteApplicationTests : IDisposable
             return "page-1";
         }
 
-        public void UpdatePageContent(string pageXml) => UpdatedPages.Add(pageXml);
+        public void DeletePage(string pageId) => DeletedPages.Add(pageId);
+
+        public void UpdatePageContent(string pageXml)
+        {
+            UpdateAttempts++;
+            if (UpdateFailuresRemaining > 0)
+            {
+                UpdateFailuresRemaining--;
+                throw new InvalidOperationException("Simulated update failure.");
+            }
+
+            UpdatedPages.Add(pageXml);
+        }
 
         public void DeletePageContent(string pageId, string objectId) =>
             DeletedObjects.Add((pageId, objectId));

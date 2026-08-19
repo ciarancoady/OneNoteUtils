@@ -203,78 +203,100 @@ public sealed class OneNoteApplication(
         }
     }
 
-    public int RunPush(string pushPath, string notebookName, string sectionName, string manifestDirectory)
+    public int RunPush(
+        string pushPath,
+        string notebookName,
+        string sectionName,
+        string manifestDirectory,
+        PushOptions? options = null)
     {
+        options ??= new PushOptions();
         try
         {
-            var markdownFiles = ResolveMarkdownFiles(pushPath);
-            if (markdownFiles == null)
-            {
-                logger.LogError("Push path '{Path}' is not a .md file or directory.", pushPath);
-                return 1;
-            }
+            var plan = PushPlanBuilder.Build(
+                source,
+                pushPath,
+                notebookName,
+                sectionName,
+                manifestDirectory,
+                options);
+            logger.LogInformation(
+                "Push plan: {Create} create, {Update} update.",
+                plan.Items.Count(item => item.Action == PushAction.Create),
+                plan.Items.Count(item => item.Action == PushAction.Update));
+            foreach (var item in plan.Items)
+                logger.LogInformation("  [{Action}] {Title}", item.Action.ToString().ToUpperInvariant(), item.Title);
 
-            if (markdownFiles.Count == 0)
+            if (options.DryRun)
             {
-                logger.LogWarning("No .md files found at '{Path}'.", pushPath);
+                logger.LogInformation("Dry run complete. No OneNote Pages were changed.");
                 return 0;
-            }
-
-            var sectionId = source.FindSectionId(notebookName, sectionName);
-            if (sectionId == null)
-            {
-                logger.LogError("Section '{Section}' not found in notebook '{Notebook}'.", sectionName, notebookName);
-                return 1;
             }
 
             var manifest = SyncManifest.Load(manifestDirectory);
             var succeeded = 0;
 
-            foreach (var markdownFile in markdownFiles)
+            foreach (var item in plan.Items)
             {
+                var pageId = item.PageId ?? source.CreatePage(plan.SectionId);
+                var pageXml = OneNoteXmlWriter.BuildPageXml(pageId, item.Title, item.Elements);
                 try
                 {
-                    var markdown = File.ReadAllText(markdownFile);
-                    var elements = MarkdownReader.Parse(markdown, Path.GetDirectoryName(markdownFile));
-                    ValidateImages(elements);
-
-                    string pageId;
-                    if (manifest.Pushed.TryGetValue(markdownFile, out var existing))
-                    {
-                        pageId = existing.PageId;
-                    }
-                    else
-                    {
-                        pageId = source.CreatePage(sectionId);
-                    }
-
-                    var title = MarkdownReader.ExtractTitle(markdown) ?? Path.GetFileNameWithoutExtension(markdownFile);
-                    var pageXml = OneNoteXmlWriter.BuildPageXml(pageId, title, elements);
-                    if (manifest.Pushed.ContainsKey(markdownFile))
+                    if (item.Action == PushAction.Update)
                         ClearPageOutlines(pageId);
                     source.UpdatePageContent(pageXml);
 
-                    manifest.Pushed[markdownFile] = new PushEntry
+                    manifest.Pushed[item.MarkdownPath] = new PushEntry
                     {
                         PageId = pageId,
                         NotebookName = notebookName,
                         SectionName = sectionName,
                         LastPushed = DateTime.UtcNow
                     };
+                    manifest.Save(manifestDirectory);
                     succeeded++;
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(
-                        "Failed to push '{File}': {Error}",
-                        Path.GetFileNameWithoutExtension(markdownFile),
-                        ex.Message);
+                    if (item.Action == PushAction.Update && item.OriginalPageXml != null)
+                    {
+                        try
+                        {
+                            ClearPageOutlines(pageId);
+                            source.UpdatePageContent(PrepareRollbackXml(item.OriginalPageXml));
+                            logger.LogWarning("Restored original Page '{Title}' after Push failed.", item.Title);
+                        }
+                        catch (Exception rollbackException)
+                        {
+                            throw new AggregateException(
+                                $"Push failed for '{item.Title}' and rollback also failed.",
+                                ex,
+                                rollbackException);
+                        }
+                    }
+                    else if (item.Action == PushAction.Create)
+                    {
+                        try
+                        {
+                            source.DeletePage(pageId);
+                            logger.LogWarning("Deleted incomplete Page '{Title}' after Push failed.", item.Title);
+                        }
+                        catch (Exception cleanupException)
+                        {
+                            throw new AggregateException(
+                                $"Push failed for '{item.Title}' and incomplete Page cleanup also failed.",
+                                ex,
+                                cleanupException);
+                        }
+                    }
+
+                    throw new InvalidOperationException($"Push failed for '{item.Title}': {ex.Message}", ex);
                 }
             }
 
             manifest.Save(manifestDirectory);
             logger.LogInformation("Push complete. {Count} file(s) pushed.", succeeded);
-            return succeeded == markdownFiles.Count ? 0 : 1;
+            return 0;
         }
         catch (Exception ex)
         {
@@ -399,52 +421,17 @@ public sealed class OneNoteApplication(
         }
     }
 
-    private static void ValidateImages(IEnumerable<ContentElement> elements)
+    private static string PrepareRollbackXml(string originalPageXml)
     {
-        foreach (var element in elements)
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml(originalPageXml);
+        var nodes = document.SelectNodes("//*[@objectID]");
+        if (nodes != null)
         {
-            switch (element)
-            {
-                case Image image when image.LoadBytes() == null:
-                    throw new FileNotFoundException($"Image '{image.FileName}' could not be resolved.");
-                case BulletList bulletList:
-                    foreach (var item in bulletList.Items)
-                    {
-                        ValidateImages(item.Elements);
-                        if (item.Children != null)
-                            ValidateImages(item.Children);
-                    }
-                    break;
-                case NumberedList numberedList:
-                    foreach (var item in numberedList.Items)
-                    {
-                        ValidateImages(item.Elements);
-                        if (item.Children != null)
-                            ValidateImages(item.Children);
-                    }
-                    break;
-                case Table table:
-                    ValidateImages(table.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Elements));
-                    break;
-                case Blockquote blockquote:
-                    ValidateImages(blockquote.Elements);
-                    break;
-            }
-        }
-    }
-
-    private static List<string>? ResolveMarkdownFiles(string pushPath)
-    {
-        if (File.Exists(pushPath) && pushPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
-            return [Path.GetFullPath(pushPath)];
-
-        if (Directory.Exists(pushPath))
-        {
-            return Directory.GetFiles(pushPath, "*.md", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFullPath)
-                .ToList();
+            foreach (System.Xml.XmlElement node in nodes)
+                node.RemoveAttribute("objectID");
         }
 
-        return null;
+        return document.OuterXml;
     }
 }
